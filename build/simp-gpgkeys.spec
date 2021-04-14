@@ -1,6 +1,6 @@
 Summary: GPGKEYS
 Name: simp-gpgkeys
-Version: 3.1.1
+Version: 4.0.0
 Release: 0
 License: Public Domain
 Group: Applications/System
@@ -26,12 +26,10 @@ All keys copyright their respective owners.
 
 # Make your directories here.
 mkdir -p %{buildroot}/%{_sysconfdir}/pki/rpm-gpg
-mkdir -p %{buildroot}/%{prefix}
-
+mkdir -p %{buildroot}/%{prefix}/{puppet,epel,simp,postgresql}
 # Now install the files.
-cp GPGKEYS/RPM-GPG-KEY-puppet* %{buildroot}/%{_sysconfdir}/pki/rpm-gpg
-cp GPGKEYS/RPM-GPG-KEY-SIMP* %{buildroot}/%{_sysconfdir}/pki/rpm-gpg
-cp GPGKEYS/* %{buildroot}/%{prefix}
+find GPGKEYS -name RPM* -exec cp {} %{buildroot}/%{_sysconfdir}/pki/rpm-gpg \;
+cp -R GPGKEYS/* %{buildroot}/%{prefix}
 
 %clean
 [ "%{buildroot}" != "/" ] && rm -rf %{buildroot}
@@ -51,19 +49,28 @@ dir='/var/www/yum/SIMP'
 if [ ! -d $dir ]; then
   mkdir -p -m 0755 "${dir}/GPGKEYS"
 fi
-cp %{prefix}/RPM-GPG-KEY* "${dir}/GPGKEYS"
+cp -R %{prefix}/* "${dir}/GPGKEYS"
 
 # Get rid of any files that are present that aren't in the new directory.
 # Ensure that we don't have issues with operations in progress.
 old_key_list=`mktemp --suffix=.simp_gpgkeys`
 new_key_list=`mktemp --suffix=.simp_gpgkeys`
 
-find "${dir}/GPGKEYS" -name "RPM-GPG-KEY*" -maxdepth 1 -printf "%f\n" | sort -u > $old_key_list
-find "%{prefix}" -name "RPM-GPG-KEY*" -maxdepth 1 -printf "%f\n" | sort -u > $new_key_list
+find "${dir}/GPGKEYS" -maxdepth 2 -name "RPM-GPG-KEY*" -printf "%P\\n"
+stdbuf -oL -eL find "${dir}/GPGKEYS" -maxdepth 2 -name "RPM-GPG-KEY*" -printf "%P\\n" | sort -u > $old_key_list
+stdbuf -oL -eL find "%{prefix}" -maxdepth 2 -name "RPM-GPG-KEY*" -printf "%P\\n" | sort -u > $new_key_list
+
+echo "OLD KEY LIST"
+cat $old_key_list
+
+echo "NEW KEY LIST"
+cat $new_key_list
 
 for file in `comm -23 $old_key_list $new_key_list`; do
+  echo "Removing $file"
   if [ -f "${dir}/GPGKEYS/${file}" ]; then
     rm -f "${dir}/GPGKEYS/${file}"
+    echo "Removed $file"
   fi
 done
 
@@ -85,15 +92,23 @@ else
 fi
 if [ -n "$search_string" ]; then
   for file in `find /etc/pki/rpm-gpg/ -regextype posix-extended -regex ${search_string}`; do
-    cp ${file} ${dir}/GPGKEYS
+    cp ${file} ${dir}/GPGKEYS/epel
   done
 fi
 
 # Ensure GPG permissions
 chown -R root:48 ${dir}/GPGKEYS/
 find ${dir}/GPGKEYS/ -type f -exec chmod 640 {} +
+find ${dir}/GPGKEYS/ -type d -exec chmod 750 {} +
 
 %changelog
+* Wed Apr 14 2021 Jeanne Greulich <jeanne.greulich@gmail.com> - 4.0.0
+- The rpms under the SIMP repo are split out into repos by signing group.
+  For example all the rpm signed by SIMP will be under 'simp', all thos signed
+  by Puppetlabs will be under 'puppet'
+- This update installs all the keys into /etc/pki/rpm-gpg and places them in the
+  directory under yum /var/www/yum/SIMP/GPGKEYS/{reponame} for the SIMP yum server.
+
 * Tue Dec 17 2019 Jeanne Greulich <jeanne.greulich@gmail.com> - 3.1.1-0
 - Added the CentOS8 and EPEL 8 GPGkeys
 
